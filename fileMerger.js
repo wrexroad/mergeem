@@ -68,73 +68,79 @@ function hashExisting(cb) {
 function readDataset(dataset, cb) {
   console.log("Starting dataset: " + dataset);
 
-  const
-    datapath = indir + dataset + "/",
-    files = fs.readdirSync(datapath);
+  const files = fs.readdirSync(indir + dataset + "/");
   let processing = 0;
 
   console.log("Contains " + files.length + " files.");
   
   cb = typeof cb === "function" ? cb : noop;
 
-  for (let file of files) {
-    let
-      inpath = datapath + file,
-      outpath = datapath + file;
+  processing++;
+  processFile(indir + dataset + "/", files.pop(), nextFile);
+  function nextFile() {
+    if (files.length > 0) {
+      processing++;
+      processFile(indir + dataset + "/", files.pop(), nextFile);
+    }
+    processing = fileDone(null, processing, cb);
+  }
+}
 
-    processing++;
+function processFile(datapath, file, cb) {
+  let processing = 0;
 
-    //calculate the file's hash
-    let hash = crypto.createHash('md5').setEncoding('hex');
-    fs.createReadStream(inpath).on('end', function() {
-      hash.end();
-      let digest = hash.read();
+  console.log("Reading " + datapath + file);
 
-      //check if the already exists in the out directory
-      if (!hashes[file]) {
-        //file does not exist, copy it over
-        copyFile(inpath, outpath, function(err) {
+  //calculate the file's hash
+  let hash = crypto.createHash('md5').setEncoding('hex');
+  fs.createReadStream(datapath+file).on('end', function() {
+    hash.end();
+    let digest = hash.read();
+
+    //check if the already exists in the out directory
+    if (!hashes[file]) {
+      //file does not exist, copy it over
+      processing++;
+      copyFile(datapath+file, outdir+file, function(err) {
+        processing = fileDone(err, processing, cb);
+      });
+      hashes[file] = digest;
+    } else {
+      if (hashes[file] !== digest) {
+        //the file already exists, but its has doesnt match the existing file
+        
+        //keep track of how many times each hash has been seen
+        if (!rejects[file]) {rejects[file] = {};}
+        rejects[file][digest] =
+          !!rejects[file][digest] ? rejects[file][digest]++ : 1; 
+        rejects[file][hashes[file]] =
+          !!rejects[file][hashes[file]] ? rejects[file][hashes[file]]++ : 1;
+        
+        //copy both to the reject directory.
+        processing++;
+        copyFile(datapath+file, rejectdir+file+"."+hash.read, function(err) {
           processing = fileDone(err, processing, cb);
         });
-        hashes[file] = digest;
-      } else {
-        if (hashes[file] !== digest) {
-          //the file already exists, but its has doesnt match the existing file
-          processing--;
+        processing++;
+        copyFile(outdir+file, rejectdir+file+"."+hash.read, function(err) {
+          processing = fileDone(err, processing, cb);
+        });
 
-          //keep track of how many times each hash has been seen
-          if (!rejects[file]) {rejects[file] = {};}
-          rejects[file][digest] =
-            !!rejects[file][digest] ? rejects[file][digest]++ : 1; 
-          rejects[file][hashes[file]] =
-            !!rejects[file][hashes[file]] ? rejects[file][hashes[file]]++ : 1;
-          
-          //copy both to the reject directory.
+        //if the new file has been seen more times than the existing file,
+        //copy it over and updated the hashes of existing files
+        if (rejects[file][digest] > rejects[file][hashes[file]]) {
+          hashes[file] = digest;
           processing++;
-          copyFile(inpath, rejectdir+file+"."+hash.read, function(err) {
+          copyFile(datapath+file, outdir+file, function(err) {
             processing = fileDone(err, processing, cb);
           });
-          processing++;
-          copyFile(outpath, rejectdir+file+"."+hash.read, function(err) {
-            processing = fileDone(err, processing, cb);
-          });
-
-          //if the new file has been seen more times than the existing file,
-          //copy it over and updated the hashes of existing files
-          if (rejects[file][digest] > rejects[file][hashes[file]]) {
-            hashes[file] = digest;
-            processing++;
-            copyFile(inpath, outpath, function(err) {
-              processing = fileDone(err, processing, cb);
-            });
-          }
-        } else {
-          //exact copy already exists, nothing to do
-          processing = fileDone(null, processing, cb);
         }
+      } else {
+        //exact copy already exists, nothing to do
+        processing = fileDone(null, processing, cb);
       }
-    }).pipe(hash);
-  }
+    }
+  }).pipe(hash);
 }
 
 function copyFile(source, target, cb) {
