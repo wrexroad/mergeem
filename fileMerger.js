@@ -35,7 +35,8 @@ function hashExisting(cb) {
   
   if (files.length) {
     console.log(
-      "Calculating hases of the " + files.length + " files that already exist in the 'out/' directory"
+      "Calculating hashes of the " + files.length +
+      " file(s) that already exist in the 'out/' directory"
     );
   } else {
     console.log("'out/' directory is empty, moving on to new files.");
@@ -54,14 +55,16 @@ function hashExisting(cb) {
       hash.end();
       hashes[file] = hash.read();
 
-      processing = fileDone(null, processing, cb);
+      processing--;
+      fileDone(null, processing, cb);
     });
 
     // read all file and pipe it to the hash object
     fd.pipe(hash);
   }
 
-  processing = fileDone(null, processing, cb);
+  processing--;
+  fileDone(null, processing, cb);
 }
 
 //process input files
@@ -69,25 +72,23 @@ function readDataset(dataset, cb) {
   console.log("Starting dataset: " + dataset);
 
   const files = fs.readdirSync(indir + dataset + "/");
-  let processing = 0;
 
   console.log("Contains " + files.length + " files.");
   
   cb = typeof cb === "function" ? cb : noop;
 
-  processing++;
   processFile(indir + dataset + "/", files.pop(), nextFile);
   function nextFile() {
     if (files.length > 0) {
-      processing++;
       processFile(indir + dataset + "/", files.pop(), nextFile);
+    } else {
+      cb();
     }
-    processing = fileDone(null, processing, cb);
   }
 }
 
 function processFile(datapath, file, cb) {
-  let processing = 0;
+  let processing = 1;
 
   console.log("Reading " + datapath + file);
 
@@ -102,7 +103,8 @@ function processFile(datapath, file, cb) {
       //file does not exist, copy it over
       processing++;
       copyFile(datapath+file, outdir+file, function(err) {
-        processing = fileDone(err, processing, cb);
+        processing--;
+        fileDone(err, processing, cb);
       });
       hashes[file] = digest;
     } else {
@@ -119,11 +121,13 @@ function processFile(datapath, file, cb) {
         //copy both to the reject directory.
         processing++;
         copyFile(datapath+file, rejectdir+file+"."+hash.read, function(err) {
-          processing = fileDone(err, processing, cb);
+          processing--;
+          fileDone(err, processing, cb);
         });
         processing++;
         copyFile(outdir+file, rejectdir+file+"."+hash.read, function(err) {
-          processing = fileDone(err, processing, cb);
+          processing--;
+          fileDone(err, processing, cb);
         });
 
         //if the new file has been seen more times than the existing file,
@@ -132,15 +136,20 @@ function processFile(datapath, file, cb) {
           hashes[file] = digest;
           processing++;
           copyFile(datapath+file, outdir+file, function(err) {
-            processing = fileDone(err, processing, cb);
+            processing--;
+            fileDone(err, processing, cb);
           });
         }
       } else {
         //exact copy already exists, nothing to do
-        processing = fileDone(null, processing, cb);
+        processing--;
+        fileDone(null, processing, cb);
       }
     }
   }).pipe(hash);
+
+  processing--;
+  fileDone(null, processing, cb);
 }
 
 function copyFile(source, target, cb) {
@@ -177,6 +186,4 @@ function fileDone(err, processing, cb) {
   if (--processing) {
     cb(); 
   }
-
-  return processing;
 }
