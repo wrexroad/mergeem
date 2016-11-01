@@ -29,7 +29,7 @@ function nextDataset() {
 //get a list of already existing files and thier hashes
 function hashExisting(cb) {
   const files = fs.readdirSync(outdir);
-  let processing = 0;
+  let processingSteps = files.length;
   
   cb = typeof cb === "function" ? cb : noop;
   
@@ -49,22 +49,17 @@ function hashExisting(cb) {
       fd = fs.createReadStream(outdir+file),
       hash = crypto.createHash('md5').setEncoding('hex');
 
-    processing++;
-
     fd.on('end', function() {
       hash.end();
       hashes[file] = hash.read();
 
-      processing--;
-      fileDone(null, processing, cb);
+      processingSteps--;
+      if (!processingSteps) {cb();};
     });
 
     // read all file and pipe it to the hash object
     fd.pipe(hash);
   }
-
-  processing--;
-  fileDone(null, processing, cb);
 }
 
 //process input files
@@ -77,10 +72,17 @@ function readDataset(dataset, cb) {
   
   cb = typeof cb === "function" ? cb : noop;
 
-  processFile(indir + dataset + "/", files.pop(), nextFile);
-  function nextFile() {
+  nextFile();
+  function nextFile(err) {
+    if (err) {
+      console.error(err);
+      process.exit(1);
+    }
+
+    let file = files.pop();
+    console.log("Reading " + file + " from " + dataset);
     if (files.length > 0) {
-      processFile(indir + dataset + "/", files.pop(), nextFile);
+      setTimeout(processFile, 0, indir + dataset + "/", files.pop(), nextFile);
     } else {
       cb();
     }
@@ -88,9 +90,7 @@ function readDataset(dataset, cb) {
 }
 
 function processFile(datapath, file, cb) {
-  let processing = 1;
-
-  console.log("Reading " + datapath + file);
+  let processingSteps = 0;
 
   //calculate the file's hash
   let hash = crypto.createHash('md5').setEncoding('hex');
@@ -101,16 +101,14 @@ function processFile(datapath, file, cb) {
     //check if the already exists in the out directory
     if (!hashes[file]) {
       //file does not exist, copy it over
-      processing++;
       copyFile(datapath+file, outdir+file, function(err) {
-        processing--;
-        fileDone(err, processing, cb);
+        cb(err);
       });
       hashes[file] = digest;
     } else {
       if (hashes[file] !== digest) {
         //the file already exists, but its has doesnt match the existing file
-        
+
         //keep track of how many times each hash has been seen
         if (!rejects[file]) {rejects[file] = {};}
         rejects[file][digest] =
@@ -118,38 +116,39 @@ function processFile(datapath, file, cb) {
         rejects[file][hashes[file]] =
           !!rejects[file][hashes[file]] ? rejects[file][hashes[file]]++ : 1;
         
-        //copy both to the reject directory.
-        processing++;
-        copyFile(datapath+file, rejectdir+file+"."+hash.read, function(err) {
-          processing--;
-          fileDone(err, processing, cb);
-        });
-        processing++;
-        copyFile(outdir+file, rejectdir+file+"."+hash.read, function(err) {
-          processing--;
-          fileDone(err, processing, cb);
-        });
-
         //if the new file has been seen more times than the existing file,
         //copy it over and updated the hashes of existing files
         if (rejects[file][digest] > rejects[file][hashes[file]]) {
           hashes[file] = digest;
-          processing++;
+          //we are copying 1 more file so we add one more processingStep
+          processingSteps++;
           copyFile(datapath+file, outdir+file, function(err) {
-            processing--;
-            fileDone(err, processing, cb);
+            processingSteps--;
+            if (!processingSteps) {cb(err);}
+          });
+        }
+
+        //copy both to the reject directory if this is the first encounter.
+        if (rejects[file][digest] == 1) {
+          processingSteps++;
+          copyFile(datapath+file, rejectdir+file + "." + digest, function(err) {
+            processingSteps--;
+            if (!processingSteps) {cb(err);}
+          });
+        }
+        if (rejects[file][hashes[file]] == 1) {
+          processingSteps++;
+          copyFile(outdir+file, rejectdir+file+"."+hashes[file], function(err) {
+            processingSteps--;
+            if (!processingSteps) {cb(err);}
           });
         }
       } else {
         //exact copy already exists, nothing to do
-        processing--;
-        fileDone(null, processing, cb);
+        if (!processingSteps) {cb(null);}
       }
     }
   }).pipe(hash);
-
-  processing--;
-  fileDone(null, processing, cb);
 }
 
 function copyFile(source, target, cb) {
@@ -173,17 +172,5 @@ function copyFile(source, target, cb) {
       cb(err);
       cbCalled = true;
     }
-  }
-}
-
-//update the number of files that still need to be processed for this dataset
-//call the callback if all have completed
-function fileDone(err, processing, cb) {
-  if (err) {
-    console.error(err);
-  }
-
-  if (--processing) {
-    cb(); 
   }
 }
