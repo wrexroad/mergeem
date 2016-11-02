@@ -70,11 +70,12 @@ function readDataset(dataset, cb) {
 
   const
     files = fs.readdirSync(indir + dataset + "/"),
-    containsBadFiles = !!files.filter(function(el){return !el;});
+    badFiles = files.filter(function(el){return !el;});
   
   console.log("Contains " + files.length + " files.");
-  if (containsBadFiles) {
+  if (badFiles.length) {
     console.error("Found undefined file in " + dataset);
+    console.error(badFiles);
     process.exit();
   }
 
@@ -87,7 +88,7 @@ function readDataset(dataset, cb) {
       console.error(err);
       process.exit(1);
     }
-
+    
     if (files.length) {
       let file = files.pop();
       console.log("Reading " + file + " from " + dataset + ".");
@@ -103,11 +104,15 @@ function processFile(datapath, file, cb) {
   let processingSteps = 0;
 
   //calculate the file's hash
-  let hash = crypto.createHash('md5').setEncoding('hex');
-  fs.createReadStream(datapath+file).on('end', function() {
+  let
+    hash = crypto.createHash('md5').setEncoding('hex'),
+    rd = fs.createReadStream(datapath+file);
+  
+  rd.on('end', function() {
     hash.end();
+    rd.unpipe();
     let digest = hash.read();
-
+    
     //check if the already exists in the out directory
     if (!hashes[file]) {
       //file does not exist, copy it over
@@ -173,6 +178,9 @@ function processFile(datapath, file, cb) {
         cb(null);
       }
     }
+  }).on("error", function(err){
+    console.error("Could not hash file " + datapath + " " + file + ":");
+    cb(err || "File Error");
   }).pipe(hash);
 }
 
@@ -193,6 +201,8 @@ function copyFile(source, target, cb) {
   rd.pipe(wr);
 
   function done(err) {
+    rd.close();
+    wr.close();
     if (!cbCalled) {
       cb(err);
       cbCalled = true;
