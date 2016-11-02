@@ -92,7 +92,7 @@ function readDataset(dataset, cb) {
     if (files.length) {
       let file = files.pop();
       console.log("Reading " + file + " from " + dataset + ".");
-      setTimeout(processFile, 0, indir + dataset + "/", files.pop(), nextFile);
+      setTimeout(processFile, 0, indir + dataset + "/", file, nextFile);
     } else {
       console.log("Finished dataset " + dataset + ".");
       cb();
