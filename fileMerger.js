@@ -77,6 +77,7 @@ function readDataset(dataset, cb) {
   nextFile();
   function nextFile(err) {
     if (err) {
+      console.log("Error processing file, exiting:");
       console.error(err);
       process.exit(1);
     }
@@ -104,13 +105,13 @@ function processFile(datapath, file, cb) {
     //check if the already exists in the out directory
     if (!hashes[file]) {
       //file does not exist, copy it over
+      hashes[file] = digest;
       copyFile(datapath+file, outdir+file, function(err) {
         cb(err);
       });
-      hashes[file] = digest;
     } else {
       if (hashes[file] !== digest) {
-        //the file already exists, but its has doesnt match the existing file
+        //the file already exists, but its hash doesnt match the existing file
 
         //keep track of how many times each hash has been seen
         if (!rejects[file]) {rejects[file] = {};}
@@ -127,7 +128,10 @@ function processFile(datapath, file, cb) {
           processingSteps++;
           copyFile(datapath+file, outdir+file, function(err) {
             processingSteps--;
-            if (!processingSteps) {cb(err);}
+            if (!processingSteps || err) {cb(err);}
+            if (processingSteps < 0) {
+              console.error("Negative processing steps in replacing conflict.");
+            }
           });
         }
 
@@ -136,19 +140,31 @@ function processFile(datapath, file, cb) {
           processingSteps++;
           copyFile(datapath+file, rejectdir+file + "." + digest, function(err) {
             processingSteps--;
-            if (!processingSteps) {cb(err);}
+            if (!processingSteps || err) {cb(err);}
+            if (processingSteps < 0) {
+              console.error("Negative processing steps copying reject 1.");
+            }
           });
         }
         if (rejects[file][hashes[file]] == 1) {
           processingSteps++;
           copyFile(outdir+file, rejectdir+file+"."+hashes[file], function(err) {
             processingSteps--;
-            if (!processingSteps) {cb(err);}
+            if (!processingSteps || err) {cb(err);}
+            if (processingSteps < 0) {
+              console.error("Negative processing steps copying reject 2.");
+            }
           });
+        }
+
+        if (!processingSteps) {
+          //The file has already been copied to the rejectdir in a previous
+          //encounter. Move on to the next file
+          cb(null);
         }
       } else {
         //exact copy already exists, nothing to do
-        if (!processingSteps) {cb(null);}
+        cb(null);
       }
     }
   }).pipe(hash);
