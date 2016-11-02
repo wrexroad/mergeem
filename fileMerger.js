@@ -23,6 +23,8 @@ function nextDataset() {
   
   if (dataset) {
     readDataset(dataset, nextDataset);
+  } else {
+    console.log("All datasets have been processed!");
   }
 }
 
@@ -81,9 +83,10 @@ function readDataset(dataset, cb) {
 
     let file = files.pop();
     if (file) {
-      console.log("Reading " + file + " from " + dataset);
+      console.log("Reading " + file + " from " + dataset + ".");
       setTimeout(processFile, 0, indir + dataset + "/", files.pop(), nextFile);
     } else {
+      console.log("Finished dataset " + dataset + ".");
       cb();
     }
   }
