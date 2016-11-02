@@ -68,10 +68,16 @@ function hashExisting(cb) {
 function readDataset(dataset, cb) {
   console.log("Starting dataset: " + dataset);
 
-  const files = fs.readdirSync(indir + dataset + "/");
-
-  console.log("Contains " + files.length + " files.");
+  const
+    files = fs.readdirSync(indir + dataset + "/"),
+    containsBadFiles = !!files.filter(function(el){return !el;});
   
+  console.log("Contains " + files.length + " files.");
+  if (containsBadFiles) {
+    console.error("Found undefined file in " + dataset);
+    process.exit();
+  }
+
   cb = typeof cb === "function" ? cb : noop;
 
   nextFile();
@@ -82,8 +88,8 @@ function readDataset(dataset, cb) {
       process.exit(1);
     }
 
-    let file = files.pop();
-    if (file) {
+    if (files.length) {
+      let file = files.pop();
       console.log("Reading " + file + " from " + dataset + ".");
       setTimeout(processFile, 0, indir + dataset + "/", files.pop(), nextFile);
     } else {
