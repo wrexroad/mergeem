@@ -80,8 +80,8 @@ function readDataset(dataset, cb) {
     }
 
     let file = files.pop();
-    console.log("Reading " + file + " from " + dataset);
-    if (files.length > 0) {
+    if (file) {
+      console.log("Reading " + file + " from " + dataset);
       setTimeout(processFile, 0, indir + dataset + "/", files.pop(), nextFile);
     } else {
       cb();
